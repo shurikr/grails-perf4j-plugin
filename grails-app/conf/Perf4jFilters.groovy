@@ -1,8 +1,11 @@
 import org.codehaus.groovy.grails.commons.GrailsClassUtils as GCU
+import org.codehaus.groovy.grails.commons.ConfigurationHolder as CNF
 import grails.util.GrailsNameUtils as GNU
 import org.perf4j.log4j.Log4JStopWatch
 import org.apache.log4j.Logger
-
+import org.grails.plugins.perf4j.mongodb.Mongo4JStopWatch
+import org.grails.plugins.perf4j.Perf4jLoggerFactory
+import org.codehaus.groovy.grails.commons.ConfigurationHolder
 
 public class Perf4jFilters {
     // the name of the config property in controllers
@@ -11,22 +14,21 @@ public class Perf4jFilters {
     static final String STOPWATCH_REQUEST_KEY = 'perf4jplugin.stopwatch'
     // the key used to store the includeView flag in the request
     static final String INCLUDE_VIEW_REQUEST_KEY = 'perf4jplugin.includeView'
-    
+
     def log = Logger.getLogger(Perf4jFilters)
 
     def controllerProfiledOptionsCache
-    
-    
+
     def filters = {
         def log = Logger.getLogger(Perf4jFilters)
-        
+
         all(controller:'*', action: '*') {
             before = {
-                if(Perf4jGrailsPlugin.profilingEnabled && Perf4jGrailsPlugin.profilingCurrentlyEnabled) {
+                if(CNF.config.perf4j.filterEnabled) {
                     if(controllerName) {
                         def action = actionName ?: 'index'
                         def controller = GNU.getClassName(controllerName, "Controller")
-                    
+
                         def controllerClass = grailsApplication.getArtefactByLogicalPropertyName("Controller", controllerName)
                         if(controllerClass) {
                             def profiled = GCU.getStaticPropertyValue(controllerClass.clazz, PROFILED_PROPERTY)
@@ -41,7 +43,7 @@ public class Perf4jFilters {
                             }
                             else if(profiled instanceof Closure) {
                                 log.trace "Closure type profiled property in ${controller}"
-                            
+
                                 if(!controllerProfiledOptionsCache.hasOptionsForController(controllerName)) {
                                     log.trace "Evaluating profiled DSL in ${controller}"
                                     controllerProfiledOptionsCache.evaluateDSL(controllerName, profiled)
@@ -60,11 +62,11 @@ public class Perf4jFilters {
                 }
             }
 
-            
+
             after = {
-                if(Perf4jGrailsPlugin.profilingEnabled && Perf4jGrailsPlugin.profilingCurrentlyEnabled) {
+                if(CNF.config.perf4j.filterEnabled) {
                     def includeView = request[INCLUDE_VIEW_REQUEST_KEY]
-            
+
                     if(!includeView) {
                         stopStopwatch(request)
                     }
@@ -73,9 +75,9 @@ public class Perf4jFilters {
 
 
             afterView = {
-                if(Perf4jGrailsPlugin.profilingEnabled && Perf4jGrailsPlugin.profilingCurrentlyEnabled) {
+                if(CNF.config.perf4j.filterEnabled) {
                     def includeView = request[INCLUDE_VIEW_REQUEST_KEY]
-            
+
                     if(includeView) {
                         stopStopwatch(request)
                     }
@@ -83,8 +85,8 @@ public class Perf4jFilters {
             }
         }
     }
-    
-    
+
+
     /**
      *  Create the stop watch and store it in the request, so it can be accessed in the after/afterView interceptors.
      */
@@ -92,16 +94,16 @@ public class Perf4jFilters {
         if(!tag) {
             tag = "${controllerName}.${actionName}"
         }
-        
-        def stopwatch = new Log4JStopWatch(tag, message)
+
+        def stopwatch =  Perf4jLoggerFactory.create(ConfigurationHolder.config.perf4j.loggerType, tag, message)
 
         request[STOPWATCH_REQUEST_KEY] = stopwatch
         request[INCLUDE_VIEW_REQUEST_KEY] = includeView
-        
+
         log.trace "Stop watch started: ${tag}"
     }
-    
-    
+
+
     /**
      *  Stop the stopwatch (if there is one).
      */

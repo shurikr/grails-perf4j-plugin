@@ -1,17 +1,17 @@
 import org.codehaus.groovy.grails.commons.GrailsClassUtils as GCU
 import grails.util.GrailsNameUtils as GNU
+import org.codehaus.groovy.grails.commons.ConfigurationHolder as CNF
 import org.codehaus.groovy.grails.plugins.support.GrailsPluginUtils
 import grails.util.GrailsUtil
 
-import org.perf4j.log4j.Log4JStopWatch
-
 import org.grails.plugins.perf4j.ProfiledOptionsBuilder
 import org.grails.plugins.perf4j.ControllerProfiledOptionsCache
+import org.grails.plugins.perf4j.Perf4jLoggerFactory
 
 
 class Perf4jGrailsPlugin {
     // the plugin version
-    def version = "0.1.1"
+    def version = "0.1.2"
     // the version or versions of Grails the plugin is designed for
     def grailsVersion = "1.1 > *"
     // the other plugins this plugin depends on
@@ -22,14 +22,13 @@ class Perf4jGrailsPlugin {
             "grails-app/views/error.gsp", "web-app/**"
     ]
     def observe = [ 'controllers', 'services', 'hibernate', 'quartz' ]
-    
 
     // plugin metadata
     def name = "perf4j"
     def author = "Daniel Rinser"
     def authorEmail = "grails@danielrinser.de"
     def title = "Perf4J Integration Plugin"
-    def description = '''This plugin integrates the Perf4J performance statistics library (http://perf4j.codehaus.org) into Grails applications. It provides idiomatic 
+    def description = '''This plugin integrates the Perf4J performance statistics library (http://perf4j.codehaus.org) into Grails applications. It provides idiomatic
 ways to profile individual code blocks and automatic, customizable profiling of service methods.'''
 
     // URL to the plugin's documentation
@@ -59,7 +58,7 @@ ways to profile individual code blocks and automatic, customizable profiling of 
         def graphingServletEnabled = (application.config.flatten().containsKey("perf4j.graphingServlet.enabled") ? application.config.perf4j.graphingServlet.enabled : GrailsUtil.isDevelopmentEnv())
         def graphNames = (application.config.flatten().containsKey("perf4j.graphingServlet.graphNames") ? application.config.perf4j.graphingServlet.graphNames : "performanceGraph")
         def urlPattern = (application.config.flatten().containsKey("perf4j.graphingServlet.urlPattern") ? application.config.perf4j.graphingServlet.urlPattern : "/perf4j")
-        
+
         // register perf4j graphing servlet
         if(graphingServletEnabled) {
             log.info "Registering Perf4J graphing servlet..."
@@ -78,7 +77,7 @@ ways to profile individual code blocks and automatic, customizable profiling of 
                     }
                 }
             }
-        
+
             def servletMappings = xml.'servlet-mapping'
             servletMappings[servletMappings.size() - 1] + {
                 'servlet-mapping' {
@@ -122,7 +121,7 @@ ways to profile individual code blocks and automatic, customizable profiling of 
     def onConfigChange = { event ->
         def oldEnabled = profilingEnabled
         evaluateConfigSettings(application, log)
-        
+
         if(oldEnabled != profilingEnabled) {
             // re-register all methods
             addPerf4jFeaturesToAllArtefacts(application, log)
@@ -151,14 +150,14 @@ ways to profile individual code blocks and automatic, customizable profiling of 
             addPerf4jMethods(it.clazz, log)
             addPerf4jGlobalProfiling(it.clazz, log)
         }
-        
+
         if(application.artefactHandlers.any { it.type == 'Task' }) {
             application.taskClasses.each {
                 addPerf4jMethods(it.clazz, log)
             }
         }
     }
-    
+
     /**
      * register profiling methods
      */
@@ -176,7 +175,7 @@ ways to profile individual code blocks and automatic, customizable profiling of 
 
         artefactClass.metaClass.withStopwatch << { String tag, String message, Closure callable ->
             if(this.profilingEnabled && this.profilingCurrentlyEnabled) {
-                def stopWatch = new Log4JStopWatch()
+                def stopWatch = Perf4jLoggerFactory.create(CNF.config.perf4j.loggerType, null, null)
                 def retVal
                 try {
                     retVal = callable.call(stopWatch)
@@ -189,14 +188,14 @@ ways to profile individual code blocks and automatic, customizable profiling of 
                 }
                 return retVal
             }
-            
+
             // profiling disabled
             else {
                 // call the closure with our dummy object to prevent NPEs
                 return callable.call(dummyObjectInstance)
             }
         }
-        
+
         artefactClass.metaClass.setProfilingEnabled << { Boolean enabled ->
             this.profilingCurrentlyEnabled = enabled
         }
@@ -205,7 +204,7 @@ ways to profile individual code blocks and automatic, customizable profiling of 
             this.profilingCurrentlyEnabled
         }
     }
-    
+
     /**
      * register global profiling
      */
@@ -230,7 +229,7 @@ ways to profile individual code blocks and automatic, customizable profiling of 
                     profilingOptions[methodName] = [tag: "${artefactClass.name}.${methodName}"]
                 }
             }
-            
+
             else if(profiled instanceof List && profiled.size() > 0) {
                 log.debug "Found static profiled property of type List..."
 
@@ -239,7 +238,7 @@ ways to profile individual code blocks and automatic, customizable profiling of 
                     profilingOptions[methodName] = [tag: "${artefactClass.name}.${methodName}"]
                 }
             }
-            
+
             else if(profiled instanceof Closure) {
                 log.debug "Found static profiled property of type Closure..."
 
@@ -257,21 +256,21 @@ ways to profile individual code blocks and automatic, customizable profiling of 
                     }
                 }
             }
-            
-            
+
+
             if(profilingOptions) {
                 // TODO: check method names in options against actual methods in service (-> getInterceptableMethods)
                 // and log warning if options include non-existing methods
 
                 log.debug "Profiling options for ${artefactClass}: ${profilingOptions}"
-                
+
                 artefactClass.metaClass.invokeMethod = { String name, args ->
                     def metaMethod = artefactClass.metaClass.getMetaMethod(name, args)
                     if(metaMethod) {
                         if(this.profilingEnabled && this.profilingCurrentlyEnabled && profilingOptions.containsKey(name)) {
                             def tag = profilingOptions[name]?.tag ?: ""
                             def message = profilingOptions[name]?.message ?: null
-                            def stopWatch = new Log4JStopWatch(tag, message)
+                            def stopWatch =  Perf4jLoggerFactory.create(CNF.config.perf4j.loggerType, tag, message)
                             def retVal
                             try {
                                 retVal = metaMethod.invoke(delegate, args)
@@ -286,7 +285,8 @@ ways to profile individual code blocks and automatic, customizable profiling of 
                         }
                     }
                     else {
-                        return artefactClass.metaClass.invokeMissingMethod(delegate, name, args)
+                        //return artefactClass.metaClass.invokeMissingMethod(delegate, name, args)
+                        return artefactClass.metaClass.invokeMethod( name, args)
                     }
                 }
             }
@@ -295,7 +295,7 @@ ways to profile individual code blocks and automatic, customizable profiling of 
             log.info "NOT adding Per4j interception code: ${artefactClass}... Perf4j is disabled in config and we are not in development environment."
         }
     }
-    
+
     /**
      *  Get all non-synthetic methods of a (service) class, ie. all methods that are defined in the source code.
      */
