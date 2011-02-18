@@ -20,7 +20,7 @@ public class Perf4jFilters {
     def controllerProfiledOptionsCache
 
     def filters = {
-        def log = Logger.getLogger(Perf4jFilters)
+        //def log = Logger.getLogger(Perf4jFilters)
 
         all(controller:'*', action: '*') {
             before = {

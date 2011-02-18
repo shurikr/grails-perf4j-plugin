@@ -6,6 +6,8 @@ import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
 import com.mongodb.DBCursor;
 import org.codehaus.groovy.grails.commons.ConfigurationHolder
+import com.mongodb.ServerAddress
+import com.mongodb.MongoOptions
 
 
 class MongodbService implements InitializingBean {
@@ -22,7 +24,10 @@ class MongodbService implements InitializingBean {
       String dbName = ConfigurationHolder.config.mongoDB.db
       String dbUsername = ConfigurationHolder.config.mongoDB.userName
       String dbPwd = ConfigurationHolder.config.mongoDB.password
-      mongo = new Mongo(host, port);
+      MongoOptions mopt = new MongoOptions()
+      mopt.connectionsPerHost = 20;
+      ServerAddress serverAddress = new ServerAddress(host, port)
+      mongo = new Mongo(serverAddress, mopt);
       //def check = mongo.getDatabaseNames()
       db = mongo.getDB(dbName);
       //enabled = db.authenticate(dbUsername, dbPwd.toCharArray())
